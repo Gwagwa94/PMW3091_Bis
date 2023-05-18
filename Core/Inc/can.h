@@ -13,7 +13,7 @@
 #include <stdbool.h>
 
 #include "stm32l4xx_hal.h"
-#include "robotech/can_vars.h"
+#include "can_vars.h"
 
 
 void configure_CAN(CAN_HandleTypeDef *hcan, CAN_EMIT_ADDR adresse);

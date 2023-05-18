@@ -27,6 +27,8 @@
 
 #include "../../PMW3901/PMW3901.h"
 
+#include "can.h"
+
 #define COEF_CAPTEUR_Petit_Robot_X  0.25 // permet de convertir en mm les valeurs de Variations du capteur du petit robot
 #define COEF_CAPTEUR_Petit_Robot_Y	0.25
 
@@ -261,6 +263,12 @@ int main(void)
 	  HAL_UART_Transmit(&huart2, (uint8_t*)buffer, Tx_len, 100); // Permet d'afficher en uart dans le terminal le posX, posY, status
 
 	  HAL_Delay(10); // Permet de mettre un délai de 10 ms
+	  /*
+	  PMW3901_Unify_2x8_to_16_t data[2] = {var_x, var_y};
+	  uint8_t sendData[4] = {data[0].raw[0], data[0].raw[1], data[1].raw[0], data[1].raw[1]};
+
+	  send(&hcan1, CAN_ADDR_RASPBERRY, FCT_GET_OPTIQUE, sendData, 4, true, 0, 1);
+	   */
   }
   /* USER CODE END 3 */
 }
