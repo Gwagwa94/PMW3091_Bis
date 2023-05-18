@@ -20,12 +20,12 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 
+/* Private includes ----------------------------------------------------------*/
+/* USER CODE BEGIN Includes */
+
 #include "stdio.h"
 
 #include "../../PMW3901/PMW3901.h"
-
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
 
 #define COEF_CAPTEUR_Petit_Robot_X  0.25 // permet de convertir en mm les valeurs de Variations du capteur du petit robot
 #define COEF_CAPTEUR_Petit_Robot_Y	0.25
