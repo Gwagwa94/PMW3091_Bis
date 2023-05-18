@@ -34,11 +34,38 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef union
+{
+  struct
+  {
+    uint8_t b;
+    uint8_t r;
+    uint8_t g;
+  } color;
+  uint32_t data;
+} PixelRGB_t;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define NEOPIXEL_ZERO 31
+#define NEOPIXEL_ONE 61
+#define	NUM_PIXELS 12
+#define DMA_BUFF_SIZE (NUM_PIXELS * 24) + 1
+
+#define COLOR_RED (int[]){255, 0, 0}
+#define COLOR_GREEN (int[]){0, 255, 0}
+#define COLOR_BLUE (int[]){0, 0, 255}
+#define COLOR_CYAN (int[]){0, 255, 255}
+#define COLOR_MAGENTA (int[]){255, 0, 255}
+#define COLOR_YELLOW (int[]){255, 255, 0}
+#define COLOR_WHITE (int[]){255, 255, 255}
+
+#define INTENSITY_VERY_LOW 7
+#define INTENSITY_LOW 6
+#define INTENSITY_MIDDLE 4
+#define INTENSITY_HIGH 2
+#define INTENSITY_VERY_HIGH 0
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -48,6 +75,9 @@
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
+
+TIM_HandleTypeDef htim1;
+DMA_HandleTypeDef hdma_tim1_ch1;
 
 UART_HandleTypeDef huart2;
 
@@ -75,15 +105,65 @@ PMW3901_Descriptor_t PMW3901_Descriptor = {
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void HAL_TIM_PWM_PulseFinishedCallback(TIM_HandleTypeDef *htim)
+{
+  HAL_TIM_PWM_Stop_DMA(htim, TIM_CHANNEL_1);
+}
 
+void NEOPIXELS_SETUP(PixelRGB_t pixel[], uint32_t *dmaBuffer, uint32_t *pBuff, int numPixelsOn, int k, int modulo, int color[], int intensity)
+{
+	for (int i = (NUM_PIXELS - 1); i > 0; i--)
+	{
+		pixel[i].data = pixel[i-1].data;
+	}
+
+	if((k % modulo) != 0)
+	{
+		pixel[0].color.r = 0;
+		pixel[0].color.g = 0;
+		pixel[0].color.b = 0;
+	}
+
+	else
+	{
+		pixel[0].color.r = color[0];
+		pixel[0].color.g = color[1];
+		pixel[0].color.b = color[2];
+	}
+
+	pixel[0].color.g >>= intensity;
+	pixel[0].color.r >>= intensity;
+	pixel[0].color.b >>= intensity;
+
+	pBuff = dmaBuffer;
+
+	for (int i = 0; i < numPixelsOn; i++)
+	{
+		for (int j = 23; j >= 0; j--)
+	    {
+			if (((pixel[i].data >> j) & 0x01) && ((k % modulo) == 0))
+	        {
+				*pBuff = NEOPIXEL_ONE;
+	        }
+	        else
+	        {
+	        	*pBuff = NEOPIXEL_ZERO;
+	        }
+	        pBuff++;
+	     }
+	 }
+	 dmaBuffer[DMA_BUFF_SIZE - 1] = 0;
+}
 /* USER CODE END 0 */
 
 /**
@@ -93,7 +173,10 @@ static void MX_SPI1_Init(void);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-
+	PixelRGB_t pixel[NUM_PIXELS] = {0};
+	  uint32_t dmaBuffer[DMA_BUFF_SIZE] = {0};
+	  uint32_t *pBuff = NULL;
+	  int k, modulo, numPixelsOff = 0, numPixelsOn;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -113,11 +196,11 @@ int main(void)
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
-
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_USART2_UART_Init();
   MX_SPI1_Init();
-
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
   Tx_len = sprintf (buffer, "init\r\n"); // Début initialisation + écriture de "init"
@@ -132,8 +215,31 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  numPixelsOn = NUM_PIXELS - numPixelsOff;
+
+    modulo = 2;
+    for(int m = 0; m < numPixelsOn; m++)
+    {
+    	  NEOPIXELS_SETUP(pixel, dmaBuffer, pBuff, numPixelsOn, m, modulo, COLOR_YELLOW, INTENSITY_LOW);
+    	  HAL_Delay(100);
+    	  HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_1, dmaBuffer, DMA_BUFF_SIZE);
+    }
+    HAL_Delay(1000);
+
+    k = 0;
+    modulo = 1;
+    for(int m = 0; m < numPixelsOn; m++){
+		NEOPIXELS_SETUP(pixel, dmaBuffer, pBuff, numPixelsOn, k, modulo, COLOR_WHITE, INTENSITY_LOW);
+		HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_1, dmaBuffer, DMA_BUFF_SIZE);
+    }
+    HAL_Delay(500);
   while (1)
   {
+	  for(int m = 0; m < numPixelsOn; m++){
+	  		NEOPIXELS_SETUP(pixel, dmaBuffer, pBuff, numPixelsOn, k, modulo, COLOR_WHITE, INTENSITY_LOW);
+	  		HAL_TIM_PWM_Start_DMA(&htim1, TIM_CHANNEL_1, dmaBuffer, DMA_BUFF_SIZE);
+	      }
+	      HAL_Delay(500);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -185,7 +291,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_MSI;
   RCC_OscInitStruct.PLL.PLLM = 1;
-  RCC_OscInitStruct.PLL.PLLN = 16;
+  RCC_OscInitStruct.PLL.PLLN = 40;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV7;
   RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV2;
   RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV2;
@@ -202,7 +308,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_4) != HAL_OK)
   {
     Error_Handler();
   }
@@ -252,6 +358,86 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 0;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 95;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
+  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
+  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
+  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
+  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
+  sBreakDeadTimeConfig.DeadTime = 0;
+  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
+  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
+  sBreakDeadTimeConfig.BreakFilter = 0;
+  sBreakDeadTimeConfig.Break2State = TIM_BREAK2_DISABLE;
+  sBreakDeadTimeConfig.Break2Polarity = TIM_BREAK2POLARITY_HIGH;
+  sBreakDeadTimeConfig.Break2Filter = 0;
+  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
+  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
+  HAL_TIM_MspPostInit(&htim1);
+
+}
+
+/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -283,6 +469,22 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 
   /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
 
 }
 
